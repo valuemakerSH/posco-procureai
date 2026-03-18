@@ -84,7 +84,10 @@
         <span class="ml-auto text-[10px] font-mono" id="kbNavBadge" style="color:#718096"></span>
       </button>
     </nav>
-    <div class="p-4 border-t border-slate-800 text-[10px] text-slate-600 font-mono text-center">구매계약실 구매혁신섹션</div>
+    <div class="p-4 border-t border-slate-800 text-[10px] font-mono text-center" style="color:#64748b">구매계약실 구매혁신섹션</div>
+    <div class="px-4 pb-3">
+      <button onclick="showApiKeyModal()" id="keyStatusBtn" class="w-full text-left text-[10px] font-mono px-2 py-1.5 rounded border border-slate-800 hover:border-slate-600 transition-colors" style="color:#475569">⚑ API 키 설정</button>
+    </div>
   </aside>
 
   <main class="flex-1 flex flex-col bg-surface-200 overflow-hidden">
@@ -175,6 +178,25 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- ═══ Gemini API 키 입력 모달 ═══ -->
+<div id="apiModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">
+  <div style="background:#141925;border:1px solid #2d3748;border-radius:12px;padding:28px;width:420px;max-width:90vw">
+    <div style="font-size:18px;font-weight:700;color:#f1f5f9;margin-bottom:6px">🔑 Gemini API 키 입력</div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.6">
+      Google AI Studio에서 발급받은 API 키를 입력하세요.<br>
+      키는 브라우저에 저장되며 서버로 전송되지 않습니다.
+    </p>
+    <input id="modalKeyInput" type="password" placeholder="AIzaSy..." style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:10px 12px;color:#e2e8f0;font-size:13px;font-family:monospace;box-sizing:border-box;margin-bottom:12px"/>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmApiKey()" style="flex:1;padding:10px;background:#e07b39;border:none;border-radius:6px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">저장 후 분석 시작</button>
+      <button onclick="closeApiModal()" style="padding:10px 16px;background:none;border:1px solid #334155;border-radius:6px;color:#64748b;font-size:13px;cursor:pointer">취소</button>
+    </div>
+    <p style="font-size:11px;color:#475569;margin-top:12px">
+      API 키 발급: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#60a5fa">aistudio.google.com</a>
+    </p>
+  </div>
 </div>
 
 <!-- ═══ 지식 DB 슬라이드 패널 ═══ -->
@@ -368,7 +390,7 @@
 
 <script>
 let extraItems=[];
-const ALL_KW=['국제유가','OPEC','호르무즈','홍해 해운','철강가격','원달러 환율','원자재','석유화학','해상운임','LME 구리','사우디 얀부','이란 제재','시멘트·레미콘','건설기계 연료'];
+const ALL_KW=['국제유가','OPEC','호르무즈','홍해 해운','철강가격','원달러 환율','원자재','석유화학','해상운임','LME 구리','사우디 얀부','이란 제재','시멘트·레미콘','건설기계 연료','화물연대 파업'];
 let activeKW=new Set([...ALL_KW]);
 
 // 기본 품목 (카테고리 고정)
@@ -443,7 +465,9 @@ async function _fetchMktCore(st,btn,icon){
   // ── 환율: 복수 API 순차 시도 ──
   // KRW: 한국수출입은행 공식 API (매매기준율) — 1순위
   // 2순위: Frankfurter(ECB 기준, ±5~10원 차이 있음)
-  const KOEX_KEY='Cs34NTECwl1Xh7wmmuAPLyjCTH8RFD4K';
+  // GitHub Actions 빌드 시 __KOEX_API_KEY__ 가 실제 키로 치환됨
+  const KOEX_BUILT='__KOEX_API_KEY__';
+  const KOEX_KEY=(KOEX_BUILT&&!KOEX_BUILT.startsWith('__'))?KOEX_BUILT:(localStorage.getItem('procureai_koex_key')||'');
   let krwOk=false;
 
   // 1순위: 한국수출입은행 API (당일 or 전일 순서로 시도)
@@ -697,9 +721,14 @@ async function fetchNews(){
 }
 
 // Claude API
-const GEMINI_API_KEY='AIzaSyBKr_C7fvBdUgNkrx8eJrCD1VxmVbd-j4U';
 function getApiKey(){
-  return GEMINI_API_KEY;
+  // GitHub Actions 빌드 시 __GEMINI_API_KEY__ 가 실제 키로 치환됨
+  const BUILT_IN_KEY='__GEMINI_API_KEY__';
+  if(BUILT_IN_KEY&&!BUILT_IN_KEY.startsWith('__')) return BUILT_IN_KEY;
+  return localStorage.getItem('procureai_gemini_key')||'';
+}
+function saveGeminiKey(k){
+  if(k) localStorage.setItem('procureai_gemini_key', k.trim());
 }
 async function callClaude(prompt,system=''){
   const key=getApiKey();
@@ -745,7 +774,7 @@ function pj(raw){
   // 열린 배열/객체 개수 세서 닫기
   let opens=0;
   for(const ch of fixed){ if(ch==='{')opens++; else if(ch==='}')opens--; }
-  for(let i=0;i<opens;i++) fixed+='"}]}';
+  for(let i=0;i<opens;i++) fixed+='"}';
   // 마지막 불완전한 항목 제거 (쉼표 뒤 잘린 경우)
   fixed=fixed.replace(/,\s*(["\}])/g,'$1');
   try{ return JSON.parse(fixed); }catch(_){}
@@ -852,6 +881,13 @@ ${allItemsText}
 - 보통: 간접 영향 또는 10~30% 수준
 - 낮음: 영향 미미 또는 10% 미만
 
+중량 벌크 자재(철근·PHC파일·시멘트·레미콘·골재 등) 분석 시 반드시 아래 관점 포함:
+- 유가 상승 → 운송비 직접 인상뿐 아니라 운송사 수익성 악화로 차량 수배 자체가 어려워짐
+- 특히 PHC파일(장물·특수차 필요), 철근(중량물) 등은 차량 수급난 발생 시 납기 지연 → 현장 공정 차질로 이어짐
+- 레미콘은 믹서트럭 운행 가능 거리 제한 있어 공급 반경 축소 가능성 있음
+- 유가 급등 시 화물연대 파업 가능성 높아짐: 안전운임제(최저운임보장) 이슈와 맞물리면 시멘트·레미콘·철근·PHC파일 등 건설 자재 공급 전면 차질 가능 (시멘트 벌크 차량 파업 → 레미콘 공장 연쇄 중단)
+- 대응: 지역별 분리발주, 현장 인근 공급사 선정, 물량 사전 확약, 차량 수배 선행 조건 계약, 파업 대비 비축 물량 확보
+
 순수 JSON:
 {"categories":[{
   "key":"steel|petro|equip|civil|apart|global",
@@ -878,6 +914,8 @@ POSCO E&C 주요 사업: 아파트(더샵), 플랜트, 도시정비, 토목, 해
 
 공사 유형별로 유가 파동이 어떤 경로로 원가에 영향을 주는지 실무적으로 분석하라.
 - 토공사/토목: 건설장비(굴삭기·덤프) 유류비 직결, 장비 왕복 횟수 증가 시 비용 복리 상승
+- 중량 자재 물류: 유가 상승 시 운송사 수익성 악화 → 철근·PHC파일·레미콘 등 차량 수배 자체가 어려워져 납기 지연 및 공정 차질 발생 가능
+- 화물연대 파업 리스크: 유가 급등 시 화물연대 파업 가능성 연동 상승. 시멘트 벌크 차량 파업 → 레미콘 공장 가동 중단 → 골조 공사 전면 차질 연쇄 구조. 현장 인근 공급사 확보·차량 수배 선행 계약·비축 물량 확보가 핵심
 - 골조·구조: 철근·형강 가격 연동, 레미콘 타설 비용
 - 아파트 마감: 도료·단열재·PVC 창호 원재료 석유화학 연동
 - 플랜트·해외: 수입 기자재 환율 영향, 해상운임 급등
@@ -1284,7 +1322,13 @@ const DEFAULT_KB = `[당사 대응사례 — 원자재 가격 상승 및 수급 
 
 [후판] 유연탄 연동 급등 → 포스코와 가격협상 주기 분기→월 단위 전환, POSCO 직발주
 
-[PHC파일] 유류비 연동 물류비 급등(원가의 약 20%) → 지역별 분리발주, 현장 인근 공급사 선정
+[PHC파일·철근 등 중량 벌크 자재] 유가 상승 시 이중 리스크:
+  1) 운송비 직접 인상 (유류비 연동)
+  2) 운송사 수익성 악화 → 차량 수배 자체 어려움 (납기 지연·공정 차질)
+  PHC파일은 장물 특수차 필요, 철근은 중량물로 일반차 대체 불가
+  레미콘은 믹서트럭 운행 반경 제한으로 공급 범위 축소 가능
+⇒ 지역별 분리발주 + 현장 인근 공급사 선정 + 차량 수배 선행 조건 계약 + 물량 사전 확약
+  + 화물연대 파업 대비 비축 물량 선확보 (시멘트 벌크 중단 시 레미콘 공장 연쇄 중단 주의)
 
 [H형강] 스크랩 수급불안·전력비·물류비 유가 연동 → PY-VINA産 형강(포스코 베트남 형강생산법인) + POSCO材 BH형강 대체품 활용 확대
 
@@ -1301,6 +1345,27 @@ const DEFAULT_KB = `[당사 대응사례 — 원자재 가격 상승 및 수급 
 function getKB(){
   const custom=(localStorage.getItem('posco_kb')||'').trim();
   return custom ? DEFAULT_KB + '\n\n[추가 등록 사례]\n' + custom : DEFAULT_KB;
+}
+function showApiKeyModal(){
+  const m=document.getElementById('apiModal');
+  m.style.display='flex';
+  setTimeout(()=>document.getElementById('modalKeyInput')?.focus(),100);
+}
+function closeApiModal(){
+  document.getElementById('apiModal').style.display='none';
+}
+function confirmApiKey(){
+  const k=(document.getElementById('modalKeyInput')?.value||'').trim();
+  if(!k){ alert('API 키를 입력해주세요.'); return; }
+  saveGeminiKey(k);
+  closeApiModal();
+  // 키 저장 후 바로 분석 실행
+  runAnalysis();
+}
+// 설정 화면에 키 상태 표시
+function getKeyStatus(){
+  const k=getApiKey();
+  return k ? `✓ API 키 설정됨 (${k.slice(0,12)}...)` : '⚠ API 키 없음 — 분석 시작 시 입력';
 }
 function toggleKBPanel(){
   const panel=document.getElementById('kbPanel');
@@ -1345,6 +1410,13 @@ renderExtra();renderKW();
   const kbEl=document.getElementById('kbInput');
   if(kbSaved&&kbEl) kbEl.value=kbSaved;
 
+  // API 키 상태 표시
+  const keyBtn=document.getElementById('keyStatusBtn');
+  if(keyBtn){
+    const k=getApiKey();
+    keyBtn.textContent = k ? `✓ API 키 설정됨` : '⚑ API 키 미설정 (클릭하여 입력)';
+    keyBtn.style.color = k ? '#68d391' : '#f6ad55';
+  }
   // 페이지 로드 시 자동 시장 조회
   const st=document.getElementById('mktSt');
   if(st){ st.style.color='#f6ad55'; st.textContent='⟳ 시장 지표 자동 조회 중...'; }
